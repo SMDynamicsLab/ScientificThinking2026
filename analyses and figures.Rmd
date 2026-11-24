@@ -1,0 +1,552 @@
+---
+title: "Analyses and figures, [redacted for anonymization purposes] 2026"
+author: "[redacted for anonymization purposes]"
+date: "24/2/2026"
+output: pdf_document
+---
+
+#title: "CLMM model with emmeans and effect sizes"
+
+# Data processing and analysis
+
+## Load libraries and data
+
+```{r load_data, echo=FALSE}
+
+rm(list=ls(all = TRUE))
+
+
+library(readxl)
+library(magrittr)
+library(dplyr)
+library(tidyverse)
+library(patchwork)
+library(ordinal)
+library(RVAideMemoire)
+library(emmeans)
+
+
+# data in current working directory
+score_df <- read_excel("all_data.xlsx", sheet = "Todas PrePost x8")
+score_df <- score_df %>% rename("Score"="ScorePrePost")
+
+# make Score>=1 (Likert-style) for emmeans results to match Score values!!!
+# (not needed if differences or slopes are considered only)
+#score_df$Score <- score_df$Score - min(score_df$Score, na.rm=TRUE) + 1
+
+
+```
+
+### Summarise data for plotting
+
+```{r summarise_data, echo=FALSE}
+
+# set level order
+levels_T <- c("Pre","Post")
+levels_S <- c("Low","High")
+levels_Q <- c("Comparison","Measurement","Rational","Esoteric")
+
+# mean across participants, keep 3 factors
+score_df_mean <- score_df %>%
+  group_by(Treatment, SES, Question) %>%
+  summarise(Score_ave=mean(Score, na.rm=TRUE),
+            Score_ci=1.96*sd(Score, na.rm=TRUE)/sqrt(n()),
+            .groups="keep")
+# set as factors and relevel for ggplot
+score_df_mean$Treatment <- factor(score_df_mean$Treatment, levels=levels_T)
+score_df_mean$Question <- factor(score_df_mean$Question, levels=levels_Q)
+score_df_mean$SES <- factor(score_df_mean$SES, levels=levels_S)
+
+# Pre data only, mean across participants, keep factors SES and Question
+score_pre_df <- score_df %>% filter(Treatment=="Pre")
+score_pre_df_mean <- score_pre_df %>%
+  group_by(SES, Question) %>%
+  summarise(Score_ave=mean(Score, na.rm=TRUE),
+            Score_ci=1.96*sd(Score, na.rm=TRUE)/sqrt(n()),
+            .groups="keep")
+# set as factors and relevel for ggplot
+score_pre_df_mean$Question <- factor(score_pre_df_mean$Question, levels=levels_Q)
+score_pre_df_mean$SES <- factor(score_pre_df_mean$SES, levels=levels_S)
+
+# Pre and Post data
+# mean across participants and Question, keep factors Treatment and SES
+score_df_mean_TS <- score_df %>%
+  group_by(Treatment,SES) %>%
+  summarise(Score_ave=mean(Score, na.rm=TRUE),
+            Score_ci=1.96*sd(Score, na.rm=TRUE)/sqrt(n()),
+            .groups="keep")
+# set as factors and relevel for ggplot
+score_df_mean_TS$Treatment <- factor(score_df_mean_TS$Treatment, levels=levels_T)
+score_df_mean_TS$SES <- factor(score_df_mean_TS$SES, levels=levels_S)
+
+# mean across participants and SES, keep factors Treatment and Question
+score_df_mean_TQ <- score_df %>%
+  group_by(Treatment, Question) %>%
+  summarise(Score_ave=mean(Score, na.rm=TRUE),
+            Score_ci=1.96*sd(Score, na.rm=TRUE)/sqrt(n()),
+            .groups="keep")
+# set as factors and relevel for ggplot
+score_df_mean_TQ$Treatment <- factor(score_df_mean_TQ$Treatment, levels=levels_T)
+score_df_mean_TQ$Question <- factor(score_df_mean_TQ$Question, levels=levels_Q)
+
+# mean across participants and Treatment, keep factors SES and Question
+score_df_mean_QS <- score_df %>%
+  group_by(SES, Question) %>%
+  summarise(Score_ave=mean(Score, na.rm=TRUE),
+            Score_ci=1.96*sd(Score, na.rm=TRUE)/sqrt(n()),
+            .groups="keep")
+# set as factors and relevel for ggplot
+score_df_mean_QS$Question <- factor(score_df_mean_QS$Question, levels=levels_Q)
+score_df_mean_QS$SES <- factor(score_df_mean_QS$SES, levels=levels_S)
+
+
+# keep Question only
+score_df_mean_Q <- score_df %>%
+  group_by(Question) %>%
+  summarise(Score_ave=mean(Score, na.rm=TRUE),
+            Score_ci=1.96*sd(Score, na.rm=TRUE)/sqrt(n()),
+            .groups="keep")
+# set as factors and relevel for ggplot
+score_df_mean_Q$Question <- factor(score_df_mean_Q$Question, levels=levels_Q)
+
+# keep SES only
+score_df_mean_S <- score_df %>%
+  group_by(SES) %>%
+  summarise(Score_ave=mean(Score, na.rm=TRUE),
+            Score_ci=1.96*sd(Score, na.rm=TRUE)/sqrt(n()),
+            .groups="keep")
+# set as factors and relevel for ggplot
+score_df_mean_S$SES <- factor(score_df_mean_S$SES, levels=levels_S)
+
+# keep Treatment only
+score_df_mean_T <- score_df %>%
+  group_by(Treatment) %>%
+  summarise(Score_ave=mean(Score, na.rm=TRUE),
+            Score_ci=1.96*sd(Score, na.rm=TRUE)/sqrt(n()),
+            .groups="keep")
+# set as factors and relevel for ggplot
+score_df_mean_T$Treatment <- factor(score_df_mean_T$Treatment, levels=levels_T)
+
+
+```
+
+### Plot data
+
+```{r plot_summarised_data, echo=FALSE}
+
+score_df_mean$Question <- factor(score_df_mean$Question,levels = c("Measurement", "Comparison", "Esoteric", "Rational"))
+
+plot_3factors <- score_df_mean %>%
+  ggplot(aes(x=Question, y=Score_ave, color=Treatment, linetype=SES,
+             group=interaction(Treatment,SES))) +
+  geom_point() +
+  geom_errorbar(aes(x=Question, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  scale_linetype_discrete(labels=c('Low-SES', 'High-SES')) +
+  scale_color_discrete(labels=c('Pre Test', 'Post Test')) +
+  geom_line() +
+  labs(subtitle='',
+       y='Score', x = 'Question') +
+  theme_classic() +
+  theme(legend.title = element_blank())
+plot_3factors
+
+
+score_pre_df_mean$Question <- factor(score_pre_df_mean$Question, levels = c("Measurement", "Comparison", "Esoteric", "Rational"))
+score_pre_df_mean$SES <- factor(score_pre_df_mean$SES, levels = c("High", "Low"))
+
+# Figure S2
+figureS2_plot_3factors_Pre <- score_pre_df_mean %>%
+  ggplot(aes(x=Question, y=Score_ave, linetype=SES,
+             group=interaction(SES))) +
+  geom_point() +
+  geom_errorbar(aes(x=Question, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  ylim(-2, 5) + 
+  labs(y='PreScore', x = 'Question') +
+  scale_linetype_discrete(labels=c('High-SES', 'Low-SES')) +
+  theme_classic() +
+  theme(legend.title = element_blank())
+figureS2_plot_3factors_Pre
+
+plot_pre_QS <- score_pre_df_mean %>%
+  ggplot(aes(x=SES, y=Score_ave, color=Question, group=Question)) +
+  geom_point() +
+  geom_errorbar(aes(x=SES, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  geom_line() +
+  labs(title="Pre data only")
+
+# Figure 1
+score_df_mean_TS$SES <- factor(score_df_mean_TS$SES, levels = c("High", "Low"))
+figure1_plot_TS <- score_df_mean_TS %>%
+  ggplot(aes(x=Treatment, y=Score_ave, linetype=SES, group=SES)) +
+  geom_point() +
+  geom_errorbar(aes(x=Treatment, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  geom_line() +
+  ylim(-2, 5) + 
+  labs (y='Score', x = 'Test') +
+  scale_linetype_discrete(labels=c('High-SES', 'Low-SES')) +
+  theme_classic() +
+  theme(legend.title = element_blank())
+figure1_plot_TS
+
+
+score_df_mean_TS$SES <- factor(score_df_mean_TS$SES, levels = c("High", "Low"))
+score_df_mean_TS$NSE <- factor(score_df_mean_TS$SES, levels = c("High", "Low"))
+
+plot_TS_esp <- score_df_mean_TS %>%
+  ggplot(aes(x=Treatment, y=Score_ave, linetype=NSE, group=NSE)) +
+  geom_point() +
+  geom_errorbar(aes(x=Treatment, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  geom_line() +
+  ylim(-2, 5) + 
+  labs (y='Puntaje', x = 'Test') +
+  scale_linetype_discrete(labels=c('Mayor NSE', 'Menor NSE')) +
+  theme_classic() +
+  theme(legend.title = element_blank())
+plot_TS_esp
+
+
+score_df_mean$Question <- factor(score_df_mean$Question, levels = c("Measurement", "Comparison", "Esoteric", "Rational"))
+labels_SES <- c(`High` = "High-SES", `Low` = "Low-SES")
+score_df_mean_TS$SES <- factor(score_df_mean_TS$SES, levels = c("High", "Low"))
+
+
+# Figure 2
+figure2_plot_TQS <- score_df_mean %>%
+  ggplot(aes(x=Treatment, y=Score_ave, color=Question, group=Question)) +
+  geom_point() +
+  geom_errorbar(aes(x=Treatment, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  geom_line() +
+  facet_wrap(~SES, labeller = as_labeller(labels_SES)) +
+  labs (y='Score', x = 'Test') +
+  ylim(-2, 5) + 
+  theme_classic()
+figure2_plot_TQS
+
+
+score_df_mean$Pregunta <- as.character(score_df_mean$Question)
+score_df_mean[score_df_mean$Pregunta == "Measurement", "Pregunta"] <- "Medición"
+score_df_mean[score_df_mean$Pregunta == "Comparison", "Pregunta"] <- "Comparación"
+score_df_mean[score_df_mean$Pregunta == "Esoteric", "Pregunta"] <- "Esotérica"
+score_df_mean[score_df_mean$Pregunta == "Rational", "Pregunta"] <- "Racional"
+score_df_mean$Pregunta <- as.factor(score_df_mean$Pregunta)
+score_df_mean$Pregunta <- factor(score_df_mean$Pregunta, levels = c("Medición", "Comparación", "Esotérica", "Racional"))
+labels_SES_esp <- c(`High` = "Mayor NSE", `Low` = "Menor NSE")
+
+plot_TQS_esp <- score_df_mean %>%
+  ggplot(aes(x=Treatment, y=Score_ave, color=Pregunta, group=Pregunta)) +
+  geom_point() +
+  geom_errorbar(aes(x=Treatment, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  geom_line() +
+  facet_wrap(~SES, labeller = as_labeller(labels_SES_esp)) +
+  labs (y='Puntaje', x = 'Test') +
+  ylim(-2, 5) + 
+  theme_classic()
+plot_TQS_esp
+
+
+
+# panel 1
+plot_TQ <- score_df_mean_TQ %>%
+  ggplot(aes(x=Treatment, y=Score_ave, color=Question, group=Question)) +
+  geom_point() +
+  geom_errorbar(aes(x=Treatment, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  labs (y='Score', x = 'Test') +
+  geom_line() +
+  ylim(-2, 5) + 
+  theme_classic() +
+  theme(legend.position = "none")
+plot_TQ
+
+
+# panel 2
+score_df_mean_QS$Question <- factor(score_df_mean_QS$Question, levels = c("Measurement", "Comparison", "Esoteric", "Rational"))
+plot_QS <- score_df_mean_QS %>%
+  ggplot(aes(x=SES, y=Score_ave, color=Question, group=Question)) +
+  geom_point() +
+  geom_errorbar(aes(x=SES, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  labs (y='Score', x = 'SES') +
+  geom_line() +
+  ylim(-2, 5) + 
+  theme_classic()
+plot_QS
+
+
+
+plot_Q <- score_df_mean_Q %>%
+  ggplot(aes(x=Question, y=Score_ave, color=Question)) +
+  geom_point() +
+  geom_errorbar(aes(x=Question, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  theme(legend.position="none")
+
+plot_T <- score_df_mean_T %>%
+  ggplot(aes(x=Treatment, y=Score_ave, color=Treatment)) +
+  geom_point() +
+  geom_errorbar(aes(x=Treatment, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  theme(legend.position="none")
+
+plot_S <- score_df_mean_S %>%
+  ggplot(aes(x=SES, y=Score_ave, color=SES)) +
+  geom_point() +
+  geom_errorbar(aes(x=SES, ymin=Score_ave-Score_ci,
+                    ymax=Score_ave+Score_ci, width=0.1)) +
+  theme(legend.position="none")
+
+
+plot_fig1 <- plot_3factors
+plot_fig2 <- plot_pre_QS
+# Figure 3
+figure3_plot_fig3 <- (plot_TQ + plot_QS)
+plot_fig4 <- (plot_T / plot_S) | (plot_Q / plot_spacer())
+
+plot_fig1  # (THREE-WAY)
+plot_fig2  # (PRE DATA ONLY)
+figure3_plot_fig3  # (TWO-WAY COMPARISONS)
+plot_fig4  # (ONE-WAY COMPARISONS)
+
+# Gráficos del paper:
+figure1_plot_TS
+figure2_plot_TQS
+figure3_plot_fig3
+figureS2_plot_3factors_Pre
+
+
+width <- 14
+height <- 8
+
+ggsave("figure1_plot_TS.pdf",
+       plot = figure1_plot_TS,
+       path = NULL,
+       scale = 1,
+       width = width,
+       height = height,
+       units = "cm")
+
+ggsave("figure2_plot_TQS.pdf",
+       plot = figure2_plot_TQS,
+       path = NULL,
+       scale = 1,
+       width = width,
+       height = height,
+       units = "cm")
+
+ggsave("figure3_plot_fig3.pdf",
+       plot = figure3_plot_fig3,
+       path = NULL,
+       scale = 1,
+       width = width,
+       height = height,
+       units = "cm")
+
+ggsave("figureS2_plot_3factors_Pre.pdf",
+       plot = figureS2_plot_3factors_Pre,
+       path = NULL,
+       scale = 1,
+       width = width,
+       height = height,
+       units = "cm")
+
+
+score_df_boxplot <- score_df
+score_df_boxplot$Treatment <- factor(score_df_boxplot$Treatment, levels = c("Pre", "Post"))
+score_df_boxplot$SES <- factor(score_df_boxplot$SES, levels = c("Low", "High"))
+score_df_boxplot$Question <- factor(score_df_boxplot$Question, levels = c("Measurement", "Comparison", "Esoteric", "Rational"))
+
+
+```
+
+### Rearrange levels and factors for fitting and contrasts
+
+```{r df_as_factors, echo=FALSE}
+
+# define variables as factors for clmm and relevel for contrasts
+score_df$Score <- as.factor(score_df$Score)
+score_df$SES <- factor(score_df$SES, levels=c("High","Low"))
+score_df$Treatment <- factor(score_df$Treatment, levels=c("Post","Pre"))
+score_df$Question <- factor(score_df$Question, levels=levels_Q)
+
+score_pre_df <- score_df %>% filter(Treatment=="Pre")
+
+```
+
+### Fit model to Pre data
+
+#Pre data: "describing the tool"
+
+
+#### Linear regression
+
+#Both SES and Question and their interaction have significant effects:
+```{r clmm_model_fit_pre, echo=FALSE}
+
+# fit model to "Pre" data
+model_clmm_pre <- clmm(Score ~ SES + Question
+                       + SES:Question
+                       + (1|Participant), data = score_pre_df)
+model_clmm_pre_anova <- Anova.clmm(model_clmm_pre, type="II")
+# show main effects
+model_clmm_pre_anova
+
+```
+
+
+#### Efect sizes
+
+# Effect of SES: High gets better scores than Low (difference=3.05)
+```{r, echo=FALSE}
+# main effect of SES
+model_clmm_pre_emm_S <- emmeans(model_clmm_pre, ~ SES, infer=c(TRUE,TRUE), mode="mean.class")
+#pairs(model_clmm_pre_emm, typr="response", infer=c(TRUE,TRUE), adjust="tukey")
+contrast(model_clmm_pre_emm_S, "pairwise", infer=c(TRUE,TRUE), adjust="tukey")
+#test(pairs(model_clmm_pre_emm, type="response", infer=c(TRUE,TRUE), adjust="tukey"))
+```
+
+# Effect of Question: some questions are more difficult than others. Measurement is easier than Comparison (i.e. it gets higher scores: difference=0.695), Rational and Esoteric are both easier than Measurement (differences 1.3208 and 1.3956, respectively) and show no significant differences between them.
+```{r, echo=FALSE}
+# main effect of Question
+model_clmm_pre_emm_Q <- emmeans(model_clmm_pre, ~ Question,
+                                infer=c(TRUE,TRUE), mode="mean.class")
+#pairs(model_clmm_pre_emm, typr="response", infer=c(TRUE,TRUE), adjust="tukey")
+contrast(model_clmm_pre_emm_Q, "consec", infer=c(TRUE,TRUE), adjust="mvt")
+
+```
+
+#Means of every cell:
+#(WARNING emmeans backtransforms scores to the interval [1:max], NOT the original score scale; this only matters when considering absolute scores, not score differences)
+```{r, echo=FALSE}
+
+# cell means and CIs
+# "mean.class" option for getting results transformed back to the "response" scale (not logit scale)
+model_clmm_pre_emm_cells <- emmeans(model_clmm_pre, ~ SES*Question,
+                                    infer=c(TRUE,TRUE), mode="mean.class", adjust="mvt")
+# WARNING emmeans backtransforms scores to the interval [1:max], NOT the original score scale
+model_clmm_pre_emm_cells
+
+```
+
+### Fit model of complete data
+
+#### Linear regression
+
+#Full model vs reduced model: (may take a long time)
+```{r clmm_model_fit_full, echo=FALSE}
+
+# Model up to 1st-order interactions
+# Score ~ (SES + Question + Treatment)^2
+model_clmm_2order <- clmm(Score ~ SES + Question + Treatment
+                          + SES:Question + SES:Treatment + Question:Treatment
+                          + (1|Participant), data = score_df)
+
+model_clmm_2order_anova <- Anova.clmm(model_clmm_2order, type="II")
+model_clmm_2order_anova
+
+
+# full model
+# Score ~ (SES + Question + Treatment)^3
+model_clmm_full <- clmm(Score ~ SES + Question + Treatment
+                        + SES:Question + SES:Treatment + Question:Treatment
+                        + SES:Treatment:Question
+                        + (1|Participant), data = score_df)
+
+model_clmm_full_anova <- Anova.clmm(model_clmm_full, type="II")
+model_clmm_full_anova
+
+
+# model comparison
+# original (simpler) model is preferred because there is no significant difference between them
+anova(model_clmm_2order,model_clmm_full)
+
+
+```
+
+
+#### Efect sizes
+
+#Main effect of Treatment: on average, Post gets better scores than Pre (difference=1.19)
+```{r, echo=FALSE}
+# main effect of Treatment
+model_clmm_2order_emm_T <- emmeans(model_clmm_2order, ~ Treatment, infer=c(TRUE,TRUE), mode="mean.class")
+contrast(model_clmm_2order_emm_T, "pairwise", infer=c(TRUE,TRUE), adjust="tukey")
+
+```
+
+#Main effect of SES: on average, High gets better scores than Low (difference=2.99)
+```{r, echo=FALSE}
+# main effect of SES
+model_clmm_2order_emm_S <- emmeans(model_clmm_2order, ~ SES, infer=c(TRUE,TRUE), mode="mean.class")
+contrast(model_clmm_2order_emm_S, "pairwise", infer=c(TRUE,TRUE), adjust="tukey")
+
+```
+
+
+
+#Non-significant interaction between Treatment and SES: LowSES improvement is slightly higher (0.938) than HighSES (0.733) (need to use full model)
+```{r}
+# post-hoc comparisons
+model_clmm_2order_emm_ST <- emmeans(model_clmm_2order, ~ SES:Treatment)
+# contrasts (post-hoc comparisons)
+model_clmm_2order_emm_ST_pairs <- pairs(model_clmm_2order_emm_ST, infer=c(TRUE,TRUE), simple="Treatment")
+model_clmm_2order_emm_ST_test <- test(model_clmm_2order_emm_ST_pairs, cross.adjust="fdr", type="response")
+# compute confidence intervals
+model_clmm_2order_emm_ST_test_CI <- model_clmm_2order_emm_ST_test %>%
+  mutate(LCI = estimate - 1.96*SE,
+         UCI = estimate + 1.96*SE)
+print(model_clmm_2order_emm_ST_test)
+
+
+```
+
+
+# Effect of Question: some questions are more difficult than others. Measurement is easier than Comparison (i.e. it gets higher scores: difference=0.695), Rational and Esoteric are both easier than Measurement (differences 1.3208 and 1.3956, respectively) and show no significant differences between them.
+```{r, echo=FALSE}
+# main effect of Question
+model_clmm_2order_emm_Q <- emmeans(model_clmm_2order, ~ Question,
+                                   infer=c(TRUE,TRUE), mode="mean.class")
+#pairs(model_clmm_pre_emm, typr="response", infer=c(TRUE,TRUE), adjust="tukey")
+contrast(model_clmm_2order_emm_Q, "consec", infer=c(TRUE,TRUE), adjust="mvt")
+
+```
+
+
+
+#Interaction between Treatment and Question: all questions have greater scores in Post, but some more than others. For instance, Comparison improves 1.26 points after Treatment while Rational only improves 0.501 points.
+```{r}
+# post-hoc comparisons
+model_clmm_2order_emm_QT <- emmeans(model_clmm_2order, ~ Question:Treatment)
+# contrasts (post-hoc comparisons)
+model_clmm_2order_emm_QT_pairs <- pairs(model_clmm_2order_emm_QT, infer=c(TRUE,TRUE), simple="Treatment")
+model_clmm_2order_emm_QT_test <- test(model_clmm_2order_emm_QT_pairs, cross.adjust="fdr", type="response")
+# compute confidence intervals
+model_clmm_2order_emm_QT_test_CI <- model_clmm_2order_emm_QT_test %>%
+  mutate(LCI = estimate - 1.96*SE,
+         UCI = estimate + 1.96*SE)
+print(model_clmm_2order_emm_QT_test)
+
+```
+
+
+
+#Interaction between SES and Question: 
+```{r}
+# post-hoc comparisons
+model_clmm_2order_emm_QS <- emmeans(model_clmm_2order, ~ Question:SES)
+# contrasts (post-hoc comparisons)
+model_clmm_2order_emm_QS_pairs <- pairs(model_clmm_2order_emm_QS, infer=c(TRUE,TRUE), simple="SES")
+model_clmm_2order_emm_QS_test <- test(model_clmm_2order_emm_QS_pairs, cross.adjust="fdr", type="response")
+# compute confidence intervals
+model_clmm_2order_emm_QS_test_CI <- model_clmm_2order_emm_QS_test %>%
+  mutate(LCI = estimate - 1.96*SE,
+         UCI = estimate + 1.96*SE)
+print(model_clmm_2order_emm_QS_test)
+
+```
